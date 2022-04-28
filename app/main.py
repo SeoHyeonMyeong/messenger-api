@@ -23,7 +23,7 @@ def root():
 
 
 @app.post("/messages", status_code=status.HTTP_201_CREATED)
-def send_message(message: Message):
+def create_message(message: Message):
     m = message.dict()
     id = next(id_counter)
     m['id'] = id
@@ -32,7 +32,7 @@ def send_message(message: Message):
 
 
 @app.get("/messages")
-def list_message():
+def list_messages():
     return {"data": list(messages.values())}
 
 
@@ -49,6 +49,15 @@ def get_message(id: int, response: Response):
                             detail=f"message with id: {id} was not found")
     message = messages[id]
     return {"message": message}
+
+
+@app.put("/messages/{id}")
+def update_message(id: int, message: Message):
+    if not id in messages:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
+                            detail=f"message with id: {id} was not found")
+    messages[id] = message
+    return {"success": "True"}
 
 
 @app.delete("/messages/{id}", status_code=status.HTTP_204_NO_CONTENT)
