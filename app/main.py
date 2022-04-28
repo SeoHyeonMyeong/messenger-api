@@ -1,28 +1,14 @@
-from fastapi import FastAPI, Response, status, HTTPException
-from model.Message import Message
-import psycopg2
-from psycopg2.extras import RealDictCursor
-import time
+from fastapi import FastAPI, Response, status, HTTPException, Depends
+from model import models
+from model.models import Message
+from model.schemas import MessageCreate
+from .database import engine, get_db
+from sqlalchemy.orm import Session
+
+models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# DB 연결
-while True:
-    try:
-        conn = psycopg2.connect(host='localhost',
-                                database='messenger', 
-                                user='postgres', 
-                                password='password',
-                                cursor_factory=RealDictCursor)
-        cursor = conn.cursor()
-        print("Database connection was succesfull!")
-        break
-    except Exception as error:
-        print("Connecting to database Failed!")
-        print("Error: ", error)
-        time.sleep(2)
-
-# 우선순위는 위에 있는 함수!
 # [GET] Root
 @app.get("/")
 def root():
@@ -30,40 +16,31 @@ def root():
 
 # [POST] Create Message
 @app.post("/messages", status_code=status.HTTP_201_CREATED)
-def create_message(message: Message):
+def create_message(message: MessageCreate, db: Session = Depends(get_db)):
+    new_message = Message(**message.dict())
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
     
-    cursor.execute("""INSERT INTO messages (title, content) VALUES (%s,%s) RETURNING * """,
-                   (message.title, message.content))
-    message = cursor.fetchone()
-    conn.commit()
-    
-    return {"data": message}
+    return {"data": new_message}
 
-# [GET] List Messages
+# [GET] Get Messages
 @app.get("/messages")
-def list_messages():
-    
-    cursor.execute("""SELECT * FROM messages;""")
-    messages = cursor.fetchall()
-    
+def get_messages(db: Session = Depends(get_db)):
+    messages = db.query(Message).all()
     return {"data": messages}
 
 # [GET] Get Latest Message
 @app.get("/messages/latest")
-def get_latest_message():
-    
-    cursor.execute("""SELECT * FROM messages ORDER BY created_at DESC LIMIT 1""")
-    message = cursor.fetchone()
+def get_latest_message(db: Session = Depends(get_db)):
+    message = db.query(Message).order_by(Message.created_at).first()
     
     return {"data": message}
 
 # [GET] Get Message
 @app.get("/messages/{id}")
-def get_message(id: int):
-    
-    cursor.execute("""SELECT * FROM messages WHERE id = %s""",(str(id)))
-    message = cursor.fetchone()
-    
+def get_message(id: int, db: Session = Depends(get_db)):
+    message = db.query(Message).filter(Message.id == id).first()
     if message == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
                             detail=f"message with id: {id} was not found")
@@ -72,29 +49,30 @@ def get_message(id: int):
 
 # [PUT] Update Message
 @app.put("/messages/{id}")
-def update_message(id: int, message: Message):
-    
-    cursor.execute("""UPDATE messages SET title = %s, content = %s WHERE id = %sRETURNING *""",
-                   (message.title, message.content, str(id),))
-    message = cursor.fetchone()
-    conn.commit()
+def update_message(id: int, updated_message: MessageCreate, db: Session = Depends(get_db)):
+    query = db.query(Message).filter(Message.id == id)
+    message = query.first()
     
     if message == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, 
                             detail=f"message with id: {id} was not found")
 
-    return {"data": message}
+    query.update(updated_message.dict(), synchronize_session=False)
+    db.commit()
+
+    return {"data": query.first()}
 
 # [DELETE] Delete Message
 @app.delete("/messages/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_message(id: int):
+def delete_message(id: int, db: Session = Depends(get_db)):
     
-    cursor.execute("""DELETE FROM messages WHERE id = %s RETURNING * """, (str(id),))
-    message = cursor.fetchone()
-    conn.commit()
+    query = db.query(Message).filter(Message.id == id)
     
-    if message == None:
+    if query.first() == None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
                             detail=f"message with id: {id} was not found")
-        
+    
+    query.delete(synchronize_session=False)
+    db.commit()
+    
     return Response(status_code=status.HTTP_204_NO_CONTENT)
