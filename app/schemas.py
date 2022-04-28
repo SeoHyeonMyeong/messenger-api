@@ -8,9 +8,25 @@ class MessageBase(BaseModel):
 class MessageCreate(MessageBase):
     pass
 
-class Message(MessageBase):
+class MessageOut(MessageBase):
     id: int
     created_at: datetime
 
+    class Config:
+        orm_mode = True
+        
+        
+class UserBase(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class UserCreate(UserBase):
+    pass
+
+class UserOut(UserBase):
+    id: int
+    created_at: datetime
+    
     class Config:
         orm_mode = True
