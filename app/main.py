@@ -1,10 +1,12 @@
 from typing import List
 from fastapi import FastAPI, Response, status, HTTPException, Depends
+from passlib.context import CryptContext
 from . import models, schemas
 from .models import Message, User
 from .database import engine, get_db
 from sqlalchemy.orm import Session
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -80,6 +82,11 @@ def delete_message(id: int, db: Session = Depends(get_db)):
 # [POST] Create User
 @app.post("/users", status_code=status.HTTP_201_CREATED, response_model=schemas.UserOut)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    
+    # 비밀번호 해싱하기
+    hashed_password = pwd_context.hash(user.password)
+    user.password = hashed_password
+    
     new_user = User(**user.dict())
     db.add(new_user)
     db.commit()
